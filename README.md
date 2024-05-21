@@ -18,6 +18,8 @@
   - [Import data into R](#import-data-into-r)
     - [R code for import and voom-normalisation](#r-code-for-import-and-voom-normalisation)
 - [Rights](#rights)
+    - [NF-CORE/rnaseq](#nf-corernaseq)
+    - [This document](#this-document)
 
 ## Overview :book:
 
@@ -265,9 +267,13 @@ saveRDS(rna_data_dge_min10, here('input', 'rna_data_dge_min10.rds'))
 
 # Rights
 
+### NF-CORE/rnaseq
+
 There are many people to thank here for writing and maintaining the NF-CORE/rnaseq pipeline ([see here](https://nf-co.re/rnaseq/3.14.0#credits)).
 If you use this pipeline for your analysis, please cite it using the following doi: 10.5281/zenodo.1400710
 
-* [THIS DOCUMENT] Copyright © 2024 – Mucosal Immunology Lab, Melbourne VIC, Australia
+### This document
+
+* Copyright © 2024 – Mucosal Immunology Lab, Melbourne VIC, Australia
 * Licence: These tools are provided under the MIT licence (see LICENSE file for details)
 * Authors: M. Macowan
