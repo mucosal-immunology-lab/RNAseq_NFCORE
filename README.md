@@ -15,6 +15,8 @@
     - [Run your RNA sequencing reads :dna:](#run-your-rna-sequencing-reads-dna)
       - [Human run script :man::woman:](#human-run-script-manwoman)
       - [Mouse run script :mouse:](#mouse-run-script-mouse)
+  - [Import data into R](#import-data-into-r)
+    - [R code for import and voom-normalisation](#r-code-for-import-and-voom-normalisation)
 
 ## Overview :book:
 
@@ -182,4 +184,80 @@ nextflow run nf-core/rnaseq -r 3.14.0 \
 	--skip_markduplicates \
 	--save_reference \
 	-resume
+```
+
+## Import data into R
+
+We have a standardised method for importing data into R. Luckily for us, the NF-CORE/rnaseq pipeline outputs are provided in `.rds` format as `SummarizedExperiment` objects, with bias-corrected gene counts without an offset.
+
+* `salmon.merged.gene_counts_length_scaled.rds`
+
+There are two matrices provided to us: counts and abundance.
+
+- The abundance matrix is the scaled and normalised transcripts per million (TPM) abundance. TPM explicitly erases information about library size. That is, it estimates the relative abundance of each transcript proportional to the total population of transcripts sampled in the experiment. Thus, you can imagine TPM, in a way, as a partition of unity — we want to assign a fraction of the total expression (whatever that may be) to transcript, regardless of whether our library is 10M fragments or 100M fragments.
+- The counts matrix is a re-estimated counts table that aims to provide count-level data to be compatible with downstream tools such as DESeq2.
+- The `tximport` package has a single function for importing transcript-level estimates. The type argument is used to specify what software was used for estimation. A simple list with matrices, `"abundance"`, `"counts"`, and `"length"`, is returned, where the transcript level information is summarized to the gene-level. Typically, abundance is provided by the quantification tools as TPM (transcripts-per-million), while the counts are estimated counts (possibly fractional), and the `"length"` matrix contains the effective gene lengths. The `"length"` matrix can be used to generate an offset matrix for downstream gene-level differential analysis of count matrices.
+
+### R code for import and voom-normalisation
+
+Here we show our standard process for preparing RNAseq data for downstream analysis.
+
+```r
+# Load R packages
+pkgs <- c('knitr', 'here', 'SummarizedExperiment', 'biomaRt', 'edgeR', 'limma')
+pacman::p_load(char = pkgs)
+
+# Import the bias-corrected counts from STAR Salmon
+rna_data <- readRDS(here('input', 'salmon.merged.gene_counts_length_scaled.rds'))
+
+# Get Ensembl annotations
+ensembl <- useMart('ensembl', dataset = 'hsapiens_gene_ensembl')
+
+ensemblIDsBronch <- rownames(rna_bronch)
+
+gene_list <- getBM(attributes = c('ensembl_gene_id', 'hgnc_symbol', 'gene_biotype'),
+                   filters = 'ensembl_gene_id', values = ensemblIDsBronch, mart = ensembl)
+colnames(gene_list) <- c("gene_id", "hgnc_symbol", "gene_biotype")
+gene_list <- filter(gene_list, !duplicated(gene_id))
+
+# Ensure that only genes in the STAR Salmon outputs are kept for the gene list
+rna_data <- rna_data[rownames(rna_data) %in% gene_list$gene_id, ]
+
+# Add the ENSEMBL data to the rowData element
+rowData(rna_data) <- merge(gene_list, rowData(rna_data), by = "gene_id", all = FALSE)
+
+# Load the RNA metadata
+metadata_rna <- read_csv(here('input', 'metadata_rna.csv'))
+
+# Sort the metadata rows to match the order of the abundance data
+rownames(metadata_rna) <- metadata_rna$RNA_barcode
+metadata_rna <- metadata_rna[colnames(rna_data),]
+
+# Create a DGEList from the SummarizedExperiment object
+rna_data_dge <- DGEList(assay(rna_data, 'counts'), 
+                        samples = metadata_rna, 
+                        group = metadata_rna$group,
+                        genes = rowData(rna_data),
+                        remove.zeros = TRUE)
+
+# Filter the DGEList based on the group information
+design <- model.matrix(~ group, data = rna_data_dge$samples)
+keep_min10 <- filterByExpr(rna_data_dge, design, min.count = 10)
+rna_data_dge_min10 <- rna_data_dge[keep_min10, ]
+
+# Calculate norm factors and perform voom normalisation
+rna_data_dge_min10 <- calcNormFactors(rna_data_dge_min10)
+rna_data_dge_min10 <- voom(rna_data_dge_min10, design, plot = TRUE)
+
+# Add the normalised abundance data from STAR Salmon and filter to match the counts data
+rna_data_dge_min10$abundance <- as.matrix(assay(rna_bronch, 'abundance'))[keep_min10, ]
+
+# Select protein coding defined genes only
+rna_data_dge_min10 <- rna_data_dge_min10[rna_data_dge_min10$genes$gene_biotype == "protein_coding" & rna_data_dge_min10$genes$hgnc_symbol != "", ]
+
+# Add symbol as rowname
+rownames(rna_data_dge_min10) <- rna_data_dge_min10$genes$gene_name
+
+# Save the DGEList
+saveRDS(rna_data_dge_min10, here('input', 'rna_data_dge_min10.rds'))
 ```
