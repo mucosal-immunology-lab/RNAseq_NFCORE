@@ -192,7 +192,7 @@ We have a standardised method for importing data into R. Luckily for us, the NF-
 
 * `salmon.merged.gene_counts_length_scaled.rds`
 
-There are two matrices provided to us: counts and abundance.
+There are two matrices provided to us: `counts` and `abundance`.
 
 - The abundance matrix is the scaled and normalised transcripts per million (TPM) abundance. TPM explicitly erases information about library size. That is, it estimates the relative abundance of each transcript proportional to the total population of transcripts sampled in the experiment. Thus, you can imagine TPM, in a way, as a partition of unity — we want to assign a fraction of the total expression (whatever that may be) to transcript, regardless of whether our library is 10M fragments or 100M fragments.
 - The counts matrix is a re-estimated counts table that aims to provide count-level data to be compatible with downstream tools such as DESeq2.
